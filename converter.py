@@ -194,9 +194,7 @@ def extract_station_commodities(station: Dict) -> list:
     if 'market' in station and 'commodities' in station['market']:
         for commodity in station['market']['commodities']:
             # Convert station commodity name to match our MINERAL_SIGNALS set
-            commodity_name = commodity['name']
-            if commodity_name == 'Low Temperature Diamonds':
-                commodity_name = 'LowTemperatureDiamond'
+            commodity_name = commodity['name'].replace(" ", "")
 
             if commodity_name in MINERAL_SIGNALS:
                 commodities.append({
