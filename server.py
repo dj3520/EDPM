@@ -370,8 +370,7 @@ def search():
             relevant_stations AS (
                 SELECT sc.system_id64, sc.station_name, sc.sell_price, sc.demand
                 FROM station_commodities sc
-                WHERE (sc.commodity_name = ? OR 
-                      (? = 'LowTemperatureDiamond' AND sc.commodity_name = 'Low Temperature Diamonds'))
+                WHERE sc.commodity_name = ?
                         AND sc.demand > 0
                         AND sc.sell_price > 0
             )
@@ -405,7 +404,7 @@ def search():
             params = [
                 ref_x, ref_x, ref_y, ref_y, ref_z, ref_z,  # for distance
                 ref_x, ref_x, ref_y, ref_y, ref_z, ref_z, max_distance, max_distance,  # for WHERE clause
-                signal_type, signal_type  # for commodity_name and LTD check
+                signal_type
             ]
             params.extend(ring_types)  # for ring type IN (...)
             params.extend(ring_type_params)  # Add ring type parameters
@@ -511,8 +510,7 @@ def search():
             relevant_stations AS (
                 SELECT sc.system_id64, sc.station_name, sc.sell_price, sc.demand
                 FROM station_commodities sc
-                WHERE (sc.commodity_name = ? OR 
-                      (? = 'LowTemperatureDiamond' AND sc.commodity_name = 'Low Temperature Diamonds'))
+                WHERE sc.commodity_name = ?
                         AND sc.demand > 0
                         AND sc.sell_price > 0
             )
@@ -547,7 +545,7 @@ def search():
             params = [
                 ref_x, ref_x, ref_y, ref_y, ref_z, ref_z,  # for distance
                 ref_x, ref_x, ref_y, ref_y, ref_z, ref_z, max_distance, max_distance,  # for WHERE clause
-                signal_type, signal_type  # for commodity_name and LTD check
+                signal_type
             ]
             if ring_type_filter != 'Without Hotspots':
                 params.append(signal_type)  # for mineral_type = ?
@@ -854,9 +852,6 @@ def search_highest():
                     -- For hotspot materials
                     WHEN hp.commodity_name NOT IN (''' + non_hotspot_str + ''')
                         AND ms.mineral_type = hp.commodity_name THEN 1
-                    -- For Low Temperature Diamonds
-                    WHEN hp.commodity_name = 'Low Temperature Diamonds' 
-                        AND ms.mineral_type = 'LowTemperatureDiamond' THEN 1
                     -- For non-hotspot materials
                     ''' + ring_type_case + '''
                     ELSE 0
