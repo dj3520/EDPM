@@ -250,11 +250,12 @@ def convert_json_to_sqlite(import_file: str, db_file: str, max_distance: float, 
             distance = calculate_distance(x, y, z)
 
             # Skip systems outside the specified radius
-            if distance > max_distance:
-                skipped_distance += 1
-                pbar.update(1)
-                continue
-            
+            if max_distance > 0:
+                if distance > max_distance:
+                    skipped_distance += 1
+                    pbar.update(1)
+                    continue
+
             # Create a copy of the system data for all operations
             system = json.loads(json.dumps(system, cls=DecimalEncoder))
 
