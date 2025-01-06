@@ -235,9 +235,9 @@ def convert_json_to_sqlite(import_file: str, db_file: str, max_distance: float, 
         last_update = start_time
 
         # Initialize progress bar
-        pbar = tqdm(total=TOTAL_ENTRIES, desc="Converting systems", 
-                   unit="systems", ncols=100, position=0, leave=True)
-        
+        pbar = tqdm(total=TOTAL_ENTRIES, desc="Converting systems",
+                   unit="systems", dynamic_ncols=True, position=0, leave=True)
+
         # Create a second progress bar for stats
         stats_bar = tqdm(bar_format='{desc}', desc='', position=1, leave=True)
 
@@ -402,17 +402,17 @@ def convert_json_to_sqlite(import_file: str, db_file: str, max_distance: float, 
 
             processed += 1
             pbar.update(1)
-            
-            # Update performance metrics every 5 seconds
+
+            # Update performance metrics every second
             current_time = time.time()
-            if current_time - last_update >= 5:
+            if current_time - last_update >= 1:
                 elapsed = current_time - start_time
                 entries_per_second = processed / elapsed
-                stats = f"Stats: Processed: {processed:,} | Distance skipped: {skipped_distance:,}"
+                stats = f"Distance skipped: {skipped_distance:,}"
                 if exclude_carriers:
                     stats += f" | Carriers skipped: {skipped_carriers_stations:,}"
                 stats += f" | No market: {skipped_no_market:,}"
-                stats += f" | Speed: {entries_per_second:.1f}/s | Stations in systems: {system_stations:,} | Stations on bodies: {body_stations:,} | Stations total: {total_stations:,}"
+                stats += f" | Stations in systems: {system_stations:,} | Stations on bodies: {body_stations:,} | Stations total: {total_stations:,}"
                 if trim_entries:
                     stats += f" | Trimmed shipyard: {trimmed_shipyard:,} | Trimmed outfitting: {trimmed_outfitting:,}"
                 stats_bar.set_description_str(stats)
