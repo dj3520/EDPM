@@ -10,6 +10,7 @@ from tqdm import tqdm
 import time
 from decimal import Decimal
 import zlib  # Built-in compression
+import gzip
 
 # Optional compression libraries
 try:
@@ -28,10 +29,10 @@ def compress_data(data: str, method: str) -> str:
     """Compress string data using the specified method."""
     if method == 'none':
         return data
-        
+
     # Convert string to bytes
     data_bytes = data.encode('utf-8')
-    
+
     # Add compression method prefix to compressed data
     if method == 'zlib':
         compressed = zlib.compress(data_bytes)
@@ -87,7 +88,7 @@ def create_database(db_path: str):
     """Create the SQLite database schema."""
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
-    
+
     # Main systems table with frequently searched fields
     c.execute('''CREATE TABLE IF NOT EXISTS systems (
         id64 INTEGER PRIMARY KEY,
@@ -101,7 +102,7 @@ def create_database(db_path: str):
         full_data JSON,
         UNIQUE(name)
     )''')
-    
+
     # Stations table for quick access to station data
     c.execute('''CREATE TABLE IF NOT EXISTS stations (
         system_id64 INTEGER,
@@ -116,7 +117,7 @@ def create_database(db_path: str):
         PRIMARY KEY (system_id64, station_id),
         FOREIGN KEY(system_id64) REFERENCES systems(id64)
     )''')
-    
+
     # Table for mineral signals in rings
     c.execute('''CREATE TABLE IF NOT EXISTS mineral_signals (
         system_id64 INTEGER,
@@ -128,7 +129,7 @@ def create_database(db_path: str):
         ring_type TEXT,
         FOREIGN KEY(system_id64) REFERENCES systems(id64)
     )''')
-    
+
     # Table for station commodity prices
     c.execute('''CREATE TABLE IF NOT EXISTS station_commodities (
         system_id64 INTEGER,
@@ -138,7 +139,7 @@ def create_database(db_path: str):
         demand INTEGER,
         FOREIGN KEY(system_id64) REFERENCES systems(id64)
     )''')
-    
+
     # Create indices for common searches
     c.execute('CREATE INDEX IF NOT EXISTS idx_controlling_power ON systems(controlling_power)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_coordinates ON systems(x, y, z)')
@@ -148,7 +149,7 @@ def create_database(db_path: str):
     c.execute('CREATE INDEX IF NOT EXISTS idx_commodity_search ON station_commodities(commodity_name, sell_price, demand)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_ring_search ON mineral_signals(ring_type, reserve_level)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_station_search ON stations(landing_pad_size, station_type)')
-    
+
     conn.commit()
     return conn
 
@@ -158,7 +159,7 @@ def extract_mineral_signals(body: Dict) -> list:
     if 'rings' in body:
         for ring in body['rings']:
             ring_type = ring.get('type', 'Unknown')
-            
+
             # First add the ring itself, regardless of signals
             signals.append({
                 'body_name': body['name'],
@@ -168,7 +169,7 @@ def extract_mineral_signals(body: Dict) -> list:
                 'reserve_level': body.get('reserveLevel', 'Unknown'),
                 'ring_type': ring_type
             })
-            
+
             # Then add any hotspot signals if they exist
             if 'signals' in ring and 'signals' in ring['signals']:
                 for mineral, count in ring['signals']['signals'].items():
@@ -192,7 +193,7 @@ def extract_station_commodities(station: Dict) -> list:
             commodity_name = commodity['name']
             if commodity_name == 'Low Temperature Diamonds':
                 commodity_name = 'LowTemperatureDiamond'
-            
+
             if commodity_name in MINERAL_SIGNALS:
                 commodities.append({
                     'station_name': station['name'],
@@ -202,18 +203,24 @@ def extract_station_commodities(station: Dict) -> list:
                 })
     return commodities
 
-def process_json_stream(json_file: str) -> Generator[Dict[Any, Any], None, None]:
+def process_json_stream(import_file: str) -> Generator[Dict[Any, Any], None, None]:
     """Stream the JSON file one system at a time to avoid memory issues."""
-    with open(json_file, 'rb') as file:
-        parser = ijson.items(file, 'item')
-        for system in parser:
-            yield system
+    if ".gz" in import_file:
+        with gzip.open(import_file, 'rb') as file:
+            parser = ijson.items(file, 'item')
+            for system in parser:
+                yield system
+    else:
+        with open(import_file, 'rb') as file:
+            parser = ijson.items(file, 'item')
+            for system in parser:
+                yield system
 
-def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, exclude_carriers: bool = False, compression: str = 'none', trim_entries: bool = False):
+def convert_json_to_sqlite(import_file: str, db_file: str, max_distance: float, exclude_carriers: bool = False, compression: str = 'none', trim_entries: bool = False):
     """Convert the large JSON file to SQLite database."""
     conn = create_database(db_file)
     c = conn.cursor()
-    
+
     try:
         processed = 0
         skipped_distance = 0
@@ -226,22 +233,22 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
         trimmed_shipyard = 0
         start_time = time.time()
         last_update = start_time
-        
+
         # Initialize progress bar
         pbar = tqdm(total=TOTAL_ENTRIES, desc="Converting systems", 
                    unit="systems", ncols=100, position=0, leave=True)
         
         # Create a second progress bar for stats
         stats_bar = tqdm(bar_format='{desc}', desc='', position=1, leave=True)
-        
-        for system in process_json_stream(json_file):
+
+        for system in process_json_stream(import_file):
             # Calculate distance from Sol
             coords = system.get('coords', {})
             x = float(coords.get('x', 0))
             y = float(coords.get('y', 0))
             z = float(coords.get('z', 0))
             distance = calculate_distance(x, y, z)
-            
+
             # Skip systems outside the specified radius
             if distance > max_distance:
                 skipped_distance += 1
@@ -250,19 +257,19 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
             
             # Create a copy of the system data for all operations
             system = json.loads(json.dumps(system, cls=DecimalEncoder))
-            
+
             # Process stations from both system level and bodies
             all_stations = []
             system_level_stations = []
             body_level_stations = []
-            
+
             # Add system-level stations with market
             if 'stations' in system:
                 system_level_stations = [(station, None) for station in system['stations'] if 'market' in station]
                 all_stations.extend(system_level_stations)
                 system_stations += len(system_level_stations)
                 skipped_no_market += len([s for s in system['stations'] if 'market' not in s])
-            
+
             # Add stations from bodies with market
             if 'bodies' in system:
                 for body in system['bodies']:
@@ -272,14 +279,14 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
                         skipped_no_market += len([s for s in body['stations'] if 'market' not in s])
                 all_stations.extend(body_level_stations)
                 body_stations += len(body_level_stations)
-            
+
             # Filter out carriers if requested
             if exclude_carriers:
                 original_count = len(all_stations)
-                all_stations = [station_info for station_info in all_stations 
+                all_stations = [station_info for station_info in all_stations
                               if not (station_info[0].get('type') == 'Drake-Class Carrier' or 'carrierName' in station_info[0])]
                 skipped_carriers_stations += original_count - len(all_stations)
-            
+
             # Remove shipyard and outfitting if requested
             if trim_entries:
                 for station_info in all_stations:
@@ -290,11 +297,11 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
                     if 'outfitting' in station:
                         del station['outfitting']
                         trimmed_outfitting += 1
-            
+
             # Create stations table entries
             for station, body_name in all_stations:
                 market_update_time = station['market'].get('updateTime')  # We know market exists due to filtering
-                
+
                 c.execute('''
                     INSERT OR REPLACE INTO stations 
                     (system_id64, station_id, body, station_name, station_type, primary_economy, landing_pad_size, distance_to_arrival, update_time)
@@ -306,14 +313,14 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
                     station.get('name'),
                     station.get('type'),
                     station.get('primaryEconomy'),
-                    'L' if station.get('landingPads', {}).get('large', 0) > 0 
+                    'L' if station.get('landingPads', {}).get('large', 0) > 0
                     else 'M' if station.get('landingPads', {}).get('medium', 0) > 0
                     else 'S' if station.get('landingPads', {}).get('small', 0) > 0
                     else 'Unknown',
                     float(station.get('distanceToArrival', 0)),
                     market_update_time
                 ))
-            
+
             # Compress the full_data JSON if compression is enabled
             # try:
             #     full_data = compress_data(json.dumps(system, cls=DecimalEncoder), compression)
@@ -323,7 +330,7 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
             # except Exception as e:
             #     print(f"\nError compressing data: {str(e)}")
             #     sys.exit(1)
-            
+
             # Extract key fields for indexed columns
             system_data = {
                 'id64': system.get('id64'),
@@ -336,7 +343,7 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
                 'power_state': system.get('powerState'),
                 # 'full_data': full_data
             }
-            
+
             # Insert system data
             c.execute('''
                 INSERT OR REPLACE INTO systems 
@@ -352,7 +359,7 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
                 system_data['controlling_power'],
                 system_data['power_state']
             ))
-            
+
             # Process mineral signals from bodies
             if 'bodies' in system:
                 for body in system['bodies']:
@@ -370,7 +377,7 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
                             signal['reserve_level'],
                             signal['ring_type']
                         ))
-            
+
             # Process station commodities - filter out carriers
             if 'stations' in system:
                 for station in system['stations']:
@@ -389,9 +396,9 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
                             commodity['sell_price'],
                             commodity['demand']
                         ))
-            
+
             total_stations = system_stations + body_stations
-            
+
             processed += 1
             pbar.update(1)
             
@@ -409,14 +416,15 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
                     stats += f" | Trimmed shipyard: {trimmed_shipyard:,} | Trimmed outfitting: {trimmed_outfitting:,}"
                 stats_bar.set_description_str(stats)
                 last_update = current_time
-                
+
             if processed % 1000 == 0:
                 conn.commit()
-        
+
         conn.commit()
+        conn.execute('VACUUM')
         pbar.close()
         stats_bar.close()
-        
+
         # Final statistics
         total_time = time.time() - start_time
         print(f"\nConversion complete:")
@@ -431,7 +439,7 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
         print(f"Total stations: {total_stations:,} (System: {system_stations:,}, Bodies: {body_stations:,})")
         print(f"Total time: {total_time:.1f} seconds")
         print(f"Average speed: {processed/total_time:.1f} entries/second")
-    
+
     except Exception as e:
         print(f"\nError during conversion: {e}")
         conn.rollback()
@@ -440,29 +448,29 @@ def convert_json_to_sqlite(json_file: str, db_file: str, max_distance: float, ex
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert Elite Dangerous JSON data to SQLite database')
-    parser.add_argument('json_file', help='Path to the input JSON file')
+    parser.add_argument('import_file', help='Path to the input JSON file. GZ files can be used but are slower.')
     parser.add_argument('db_file', help='Path to the output SQLite database file')
     parser.add_argument('--max-distance', type=str, required=True,
                       help='Maximum distance from Sol in light years')
     parser.add_argument('--exclude-carriers', action='store_true',
                       help='Exclude Drake-Class Carriers from the database')
-    parser.add_argument('-c', '--compression', 
+    parser.add_argument('-c', '--compression',
                       choices=['none', 'zlib', 'zstandard', 'lz4'],
                       default='none',
                       help='Compression method for JSON data (default: none)')
     parser.add_argument('--trim-entries', action='store_true',
                       help='Remove shipyard and outfitting data from stations')
-    
+
     args = parser.parse_args()
-    
-    if not Path(args.json_file).exists():
-        print(f"Input file {args.json_file} does not exist!")
+
+    if not Path(args.import_file).exists():
+        print(f"Input file {args.import_file} does not exist!")
         sys.exit(1)
-    
+
     try:
         max_distance = float(args.max_distance)
     except ValueError:
         print("Max distance must be a number in light years")
         sys.exit(1)
-    
-    convert_json_to_sqlite(args.json_file, args.db_file, max_distance, args.exclude_carriers, args.compression, args.trim_entries) 
+
+    convert_json_to_sqlite(args.import_file, args.db_file, max_distance, args.exclude_carriers, args.compression, args.trim_entries)

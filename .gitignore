@@ -15,3 +15,5 @@ __pycache__/
 json/Commodity-2025-01-04.jsonl
 json/galaxy_populated.json
 json/galaxy_populated.json.gz
+*.gz
+*.json
