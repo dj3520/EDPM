@@ -7,8 +7,8 @@ import json
 import zlib  # Built-in compression
 import mining_data
 from mining_data import (
-    get_material_ring_types, 
-    get_non_hotspot_materials_list, 
+    get_material_ring_types,
+    get_non_hotspot_materials_list,
     get_ring_type_case_statement,
     get_mining_type_conditions,
     get_price_comparison,
@@ -35,7 +35,7 @@ except ImportError:
 # Get the absolute path of the directory containing server.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-app = Flask(__name__, 
+app = Flask(__name__,
            template_folder=BASE_DIR,  # Set template folder to the root directory
            static_folder=None)  # Disable default static folder handling
 
@@ -62,12 +62,12 @@ def serve_static(filename):
         '.woff2': 'font/woff2',
         '.ttf': 'font/ttf'
     }
-    
+
     # Get the file extension
     _, ext = os.path.splitext(filename)
     # Get the corresponding MIME type, default to binary stream if not found
     mimetype = mime_types.get(ext.lower(), 'application/octet-stream')
-    
+
     response = send_from_directory(BASE_DIR, filename, mimetype=mimetype)
     if ext.lower() == '.js':
         response.headers['Access-Control-Allow-Origin'] = '*'
@@ -114,7 +114,7 @@ search_results = 30
 system_database = systems.db"""
             with open(config_path, 'w') as f:
                 f.write(default_config)
-        
+
         response = send_from_directory(BASE_DIR, 'Config.ini', mimetype='text/plain')
         # Add headers to prevent caching
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -138,12 +138,12 @@ def decompress_data(data: str) -> str:
     """Decompress data if it was compressed during conversion."""
     if not data.startswith('__compressed__'):
         return data
-        
+
     try:
         # Extract compression method and compressed data
         _, method, compressed_hex = data.split('__', 2)
         compressed = bytes.fromhex(compressed_hex)
-        
+
         if method == 'zlib':
             decompressed = zlib.decompress(compressed)
         elif method == 'zstandard':
@@ -157,7 +157,7 @@ def decompress_data(data: str) -> str:
             decompressed = lz4.frame.decompress(compressed)
         else:
             raise ValueError(f"Unknown compression method: {method}")
-            
+
         return decompressed.decode('utf-8')
     except Exception as e:
         app.logger.error(f"Error decompressing data: {str(e)}")
@@ -189,6 +189,9 @@ def get_db_connection():
         app.logger.error(f"Database file not found: {db_file}")
         return None
     conn = sqlite3.connect(db_file)
+    conn.execute("PRAGMA journal_mode = OFF")
+    conn.execute("PRAGMA TEMP_STORE = 2")
+    conn.execute("PRAGMA synchronous = OFF")
     conn.row_factory = dict_factory
     return conn
 
@@ -226,10 +229,10 @@ def autocomplete():
         search = request.args.get('q', '').strip()
         if len(search) < 2:
             return jsonify([])
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Search for system names that start with the input
         cursor.execute('''
             SELECT name, x, y, z 
@@ -237,10 +240,10 @@ def autocomplete():
             WHERE name LIKE ? || '%'
             LIMIT 10
         ''', (search,))
-        
-        results = [{'name': row['name'], 'coords': {'x': row['x'], 'y': row['y'], 'z': row['z']}} 
+
+        results = [{'name': row['name'], 'coords': {'x': row['x'], 'y': row['y'], 'z': row['z']}}
                   for row in cursor.fetchall()]
-        
+
         conn.close()
         return jsonify(results)
     except Exception as e:
@@ -266,28 +269,28 @@ def search():
             # Load material mining data
             with open('data/mining_data.json', 'r') as f:
                 material_data = json.load(f)
-            
+
             # Check if material exists and has valid mining types
             commodity_data = next((item for item in material_data['materials'] if item['name'] == signal_type), None)
             if not commodity_data:
                 return jsonify([])  # Return empty results if material isn't found
-        
+
         # Check if this is a ring-type material
         ring_materials = get_ring_materials()
         is_ring_material = signal_type in ring_materials
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get reference system coordinates
         cursor.execute('SELECT x, y, z FROM systems WHERE name = ?', (ref_system,))
         ref_coords = cursor.fetchone()
         if not ref_coords:
             conn.close()
             return jsonify({'error': 'Reference system not found'}), 404
-        
+
         ref_x, ref_y, ref_z = ref_coords['x'], ref_coords['y'], ref_coords['z']
-        
+
         # Get mining type conditions if specified
         mining_type_condition = ''
         mining_type_params = []
@@ -306,7 +309,7 @@ def search():
                 # 2. Are of a type where this material can be found
                 ring_type_condition = ' AND (ms.mineral_type IS NULL OR ms.mineral_type != ?)'
                 ring_type_params.append(signal_type)
-                
+
                 # Get potential ring types from mining_data.json
                 try:
                     with open('data/mining_data.json', 'r') as f:
@@ -323,7 +326,7 @@ def search():
                                     ring_data['core']
                                 ]):
                                     ring_types.append(ring_type)
-                            
+
                             if ring_types:
                                 ring_type_condition += ' AND ms.ring_type IN (' + ','.join('?' * len(ring_types)) + ')'
                                 ring_type_params.extend(ring_types)
@@ -333,7 +336,7 @@ def search():
                 # Specific ring type selected
                 ring_type_condition = ' AND ms.ring_type = ?'
                 ring_type_params.append(ring_type_filter)
-                
+
                 # Check if this material can be found in this ring type
                 try:
                     with open('data/mining_data.json', 'r') as f:
@@ -343,16 +346,16 @@ def search():
                             return jsonify([])  # Return empty results if material can't be found in this ring type
                 except Exception as e:
                     app.logger.error(f"Error checking mining_data.json: {str(e)}")
-        
+
         # Define non-hotspot materials
         non_hotspot_minerals = get_non_hotspot_materials_list()
         is_non_hotspot = signal_type in non_hotspot_minerals
-        
+
         if is_non_hotspot:
             # Get ring types from NON_HOTSPOT_MATERIALS dictionary
             ring_types = mining_data.NON_HOTSPOT_MATERIALS.get(signal_type, [])
             ring_types_str = ','.join('?' * len(ring_types))
-            
+
             query = '''
             WITH relevant_systems AS (
                 SELECT s.*, 
@@ -398,7 +401,7 @@ def search():
                 AND rs.station_name = st.station_name
             WHERE ms.ring_type IN (''' + ring_types_str + ''')''' + ring_type_condition + '''
             '''
-            
+
             params = [
                 ref_x, ref_x, ref_y, ref_y, ref_z, ref_z,  # for distance
                 ref_x, ref_x, ref_y, ref_y, ref_z, ref_z, max_distance, max_distance,  # for WHERE clause
@@ -406,17 +409,17 @@ def search():
             ]
             params.extend(ring_types)  # for ring type IN (...)
             params.extend(ring_type_params)  # Add ring type parameters
-            
+
             # Add mining type conditions if specified
             if mining_type_condition:
                 query += f' AND {mining_type_condition}'
                 params.extend(mining_type_params)
-        
+
         elif is_ring_material:
             ring_types = ring_materials[signal_type]['ring_types']
             app.logger.info(f"Looking for rings of type: {ring_types}")
             ring_types_str = ','.join('?' * len(ring_types))
-            
+
             query = '''
             WITH relevant_systems AS (
                 SELECT s.*, 
@@ -476,7 +479,7 @@ def search():
                 AND rs.station_name = st.station_name
             WHERE 1=1
             '''
-            
+
             params = [
                 ref_x, ref_x, ref_y, ref_y, ref_z, ref_z,  # for distance_squared
                 ref_x, ref_x, ref_y, ref_y, ref_z, ref_z,  # for distance
@@ -486,12 +489,12 @@ def search():
             ]
             params.extend(ring_types)  # for ring type filter
             params.extend(ring_type_params)  # Add ring type parameters
-            
+
             # Add mining type conditions if specified
             if mining_type_condition:
                 query += f' AND {mining_type_condition}'
                 params.extend(mining_type_params)
-        
+
         else:
             # Original hotspot query
             query = '''
@@ -540,7 +543,7 @@ def search():
                 AND rs.station_name = st.station_name
             WHERE 1=1
             '''
-            
+
             params = [
                 ref_x, ref_x, ref_y, ref_y, ref_z, ref_z,  # for distance
                 ref_x, ref_x, ref_y, ref_y, ref_z, ref_z, max_distance, max_distance,  # for WHERE clause
@@ -549,20 +552,20 @@ def search():
             if ring_type_filter != 'Without Hotspots':
                 params.append(signal_type)  # for mineral_type = ?
             params.extend(ring_type_params)  # Add ring type parameters
-            
+
             # Add mining type conditions if specified
             if mining_type_condition:
                 query += f' AND {mining_type_condition}'
                 params.extend(mining_type_params)
-        
+
         if controlling_power:
             query += ' AND s.controlling_power = ?'
             params.append(controlling_power)
-        
+
         if power_states:
             query += ' AND s.power_state IN ({})'.format(','.join('?' * len(power_states)))
             params.extend(power_states)
-        
+
         # Order by reserve level (pristine first) for ring materials, then by price and distance
         if is_ring_material:
             query += ''' ORDER BY 
@@ -578,32 +581,32 @@ def search():
                 s.distance ASC'''
         else:
             query += ' ORDER BY rs.sell_price DESC NULLS LAST, s.distance ASC'
-        
+
         cursor.execute(query, params)
         rows = cursor.fetchall()
-        
+
         # Process results
         processed_results = []
         current_system = None
-        
+
         # First, collect all system_id64 and station_name pairs
-        station_pairs = [(row['system_id64'], row['station_name']) 
+        station_pairs = [(row['system_id64'], row['station_name'])
                         for row in rows if row['station_name']]
-        
+
         # Get all other commodities in a single query
         other_commodities = {}
         if station_pairs:
             other_cursor = conn.cursor()
             placeholders = ','.join(['(?,?)' for _ in station_pairs])
             params = [item for pair in station_pairs for item in pair]
-            
+
             # Get the selected materials from the request
             selected_materials = request.args.getlist('selected_materials[]', type=str)
-            
+
             if selected_materials and selected_materials != ['Default']:
                 # Convert codes to full names using cached mapping
                 full_names = [mining_data.MATERIAL_CODES.get(mat, mat) for mat in selected_materials]
-                
+
                 # Get all specified materials for each station
                 other_cursor.execute(f'''
                     SELECT sc.system_id64, sc.station_name, sc.commodity_name, sc.sell_price, sc.demand,
@@ -614,7 +617,7 @@ def search():
                     AND sc.sell_price > 0 AND sc.demand > 0
                     ORDER BY sc.system_id64, sc.station_name, sc.sell_price DESC
                 ''', params + full_names)
-                
+
                 # Process results - store all materials for each station
                 for row in other_cursor.fetchall():
                     key = (row['system_id64'], row['station_name'])
@@ -626,7 +629,7 @@ def search():
                         'sell_price': row['sell_price'],
                         'demand': row['demand']
                     })
-                    
+
                     # Debug log to verify we're getting all materials
                     if row['total_commodities'] > 1:
                         app.logger.info(f"Station {row['station_name']} has {row['total_commodities']} selected commodities")
@@ -639,7 +642,7 @@ def search():
                     AND sell_price > 0 AND demand > 0
                     ORDER BY sell_price DESC
                 ''', params)
-                
+
                 for row in other_cursor.fetchall():
                     key = (row['system_id64'], row['station_name'])
                     if key not in other_commodities:
@@ -650,14 +653,14 @@ def search():
                             'sell_price': row['sell_price'],
                             'demand': row['demand']
                         })
-            
+
             other_cursor.close()
-        
+
         for row in rows:
             if current_system is None or current_system['name'] != row['system_name']:
                 if current_system is not None:
                     processed_results.append(current_system)
-                
+
                 current_system = {
                     'name': row['system_name'],
                     'controlling_power': row['controlling_power'],
@@ -668,7 +671,7 @@ def search():
                     'stations': [],
                     'all_signals': []
                 }
-            
+
             # Add ring if not already present
             if is_ring_material:
                 ring_entry = {
@@ -698,7 +701,7 @@ def search():
                         }
                         if ring_entry not in current_system['rings']:
                             current_system['rings'].append(ring_entry)
-                
+
             # Add to all_signals if not already present
             signal_entry = {
                 'ring_name': row['ring_name'],
@@ -709,7 +712,7 @@ def search():
             }
             if signal_entry not in current_system['all_signals'] and signal_entry['mineral_type'] is not None:
                 current_system['all_signals'].append(signal_entry)
-            
+
             # Add station if present and not already added
             if row['station_name']:
                 try:
@@ -735,18 +738,18 @@ def search():
                 except (TypeError, ValueError) as e:
                     app.logger.error(f"Error processing station data: {str(e)}")
                     continue
-        
+
         if current_system is not None:
             processed_results.append(current_system)
-        
+
         # Limit results before returning
         processed_results = processed_results[:limit]
-        
+
         # After processing the main results, get all other signals for these systems
         if not is_non_hotspot and processed_results:
             system_ids = [system['system_id64'] for system in processed_results]
             placeholders = ','.join(['?' for _ in system_ids])
-            
+
             # Get all signals for these systems
             cursor.execute(f'''
                 SELECT system_id64, ring_name, mineral_type, signal_count, reserve_level, ring_type
@@ -754,7 +757,7 @@ def search():
                 WHERE system_id64 IN ({placeholders})
                 AND mineral_type != ?
             ''', system_ids + [signal_type])
-            
+
             # Group signals by system
             other_signals = {}
             for row in cursor.fetchall():
@@ -767,14 +770,14 @@ def search():
                     'reserve_level': row['reserve_level'],
                     'ring_type': row['ring_type']
                 })
-            
+
             # Add other signals to the results
             for system in processed_results:
                 system['all_signals'].extend(other_signals.get(system['system_id64'], []))
-        
+
         conn.close()
         return jsonify(processed_results)
-        
+
     except Exception as e:
         app.logger.error(f"Search error: {str(e)}")
         return jsonify({'error': f'Search error: {str(e)}'}), 500
@@ -785,37 +788,37 @@ def search_highest():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get search parameters
         controlling_power = request.args.get('controlling_power')
         power_states = request.args.getlist('power_state[]')
         limit = int(request.args.get('limit', '30'))
-        
+
         # Build power state filter
         power_state_filter = ''
         power_filter_params = []
-        
+
         if controlling_power:
             power_state_filter += ' AND s.controlling_power = ?'
             power_filter_params.append(controlling_power)
-        
+
         if power_states:
             placeholders = ','.join(['?' for _ in power_states])
             power_state_filter += f' AND s.power_state IN ({placeholders})'
             power_filter_params.extend(power_states)
-        
+
         # Get the list of non-hotspot materials
         non_hotspot_materials = get_non_hotspot_materials_list()
         non_hotspot_str = ', '.join(f"'{material}'" for material in non_hotspot_materials)
-        
+
         # Build the ring type case statement
         ring_type_cases = []
         for material, ring_types in NON_HOTSPOT_MATERIALS.items():
             ring_types_str = "', '".join(ring_types)
             ring_type_cases.append(f"WHEN hp.commodity_name = '{material}' AND ms.ring_type IN ('{ring_types_str}') THEN 1")
-        
+
         ring_type_case = '\n'.join(ring_type_cases)
-        
+
         query = '''
         WITH HighestPrices AS (
             -- First get all prices ordered by highest first
@@ -879,14 +882,14 @@ def search_highest():
         ORDER BY max_price DESC
         LIMIT ?
         '''
-        
+
         power_filter_params.append(limit)
         cursor.execute(query, power_filter_params)
         results = cursor.fetchall()
-        
+
         conn.close()
         return jsonify(results)
-    
+
     except Exception as e:
         app.logger.error(f"Search highest error: {str(e)}")
         return jsonify({'error': f'Search error: {str(e)}'}), 500
@@ -898,22 +901,22 @@ def get_price_comparison_endpoint():
         data = request.json
         items = data.get('items', [])
         use_max = data.get('use_max', False)
-        
+
         if not items:
             return jsonify([])
-            
+
         results = []
         for item in items:
             price = int(item.get('price', 0))
             commodity = item.get('commodity')
-            
+
             if not commodity:
                 results.append({'color': None, 'indicator': ''})
                 continue
-                
+
             # Always normalize the commodity name first
             normalized_commodity = normalize_commodity_name(commodity)
-            
+
             if normalized_commodity not in PRICE_DATA:
                 # If normalization didn't work, try the original name
                 if commodity in PRICE_DATA:
@@ -921,17 +924,17 @@ def get_price_comparison_endpoint():
                 else:
                     results.append({'color': None, 'indicator': ''})
                     continue
-            
+
             reference_price = int(PRICE_DATA[normalized_commodity]['max_price' if use_max else 'avg_price'])
             color, indicator = get_price_comparison(price, reference_price)
-            
+
             results.append({
                 'color': color,
                 'indicator': indicator
             })
-        
+
         return jsonify(results)
-    
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -942,26 +945,26 @@ def search_res_hotspots():
         # Get reference system and database
         ref_system = request.args.get('system', 'Sol')
         database = request.json.get('database', 'systems.db')
-        
+
         conn = get_db_connection()
         if not conn:
             return jsonify({'error': 'Database connection failed'}), 500
-            
+
         cursor = conn.cursor()
         cursor.row_factory = res_data.dict_factory
-        
+
         # Get reference system coordinates
         cursor.execute('SELECT x, y, z FROM systems WHERE name = ?', (ref_system,))
         ref_coords = cursor.fetchone()
         if not ref_coords:
             conn.close()
             return jsonify({'error': 'Reference system not found'}), 404
-        
+
         ref_x, ref_y, ref_z = ref_coords['x'], ref_coords['y'], ref_coords['z']
-        
+
         # Load RES hotspot data with database path
         hotspot_data = res_data.load_res_data(database)
-        
+
         # Process each system
         results = []
         for entry in hotspot_data:
@@ -974,14 +977,14 @@ def search_res_hotspots():
                 FROM systems s
                 WHERE s.name = ?
             ''', (ref_x, ref_x, ref_y, ref_y, ref_z, ref_z, entry['system']))
-            
+
             system = cursor.fetchone()
             if not system:
                 continue
-                
+
             # Get station data
             stations = res_data.get_station_commodities(conn, system['id64'])
-            
+
             results.append({
                 'system': entry['system'],
                 'power': system['controlling_power'] or 'None',
@@ -992,10 +995,10 @@ def search_res_hotspots():
                 'comment': entry['comment'],
                 'stations': stations
             })
-        
+
         conn.close()
         return jsonify(results)
-    
+
     except Exception as e:
         app.logger.error(f"RES hotspot search error: {str(e)}")
         return jsonify({'error': f'Search error: {str(e)}'}), 500
@@ -1006,26 +1009,26 @@ def search_high_yield_platinum():
         # Get reference system and database
         ref_system = request.args.get('system', 'Sol')
         database = request.json.get('database', 'systems.db')
-        
+
         conn = get_db_connection()
         if not conn:
             return jsonify({'error': 'Database connection failed'}), 500
-            
+
         cursor = conn.cursor()
         cursor.row_factory = res_data.dict_factory
-        
+
         # Get reference system coordinates
         cursor.execute('SELECT x, y, z FROM systems WHERE name = ?', (ref_system,))
         ref_coords = cursor.fetchone()
         if not ref_coords:
             conn.close()
             return jsonify({'error': 'Reference system not found'}), 404
-        
+
         ref_x, ref_y, ref_z = ref_coords['x'], ref_coords['y'], ref_coords['z']
-        
+
         # Load high yield platinum data
         data = res_data.load_high_yield_platinum()
-        
+
         # Process each system
         results = []
         for entry in data:
@@ -1038,14 +1041,14 @@ def search_high_yield_platinum():
                 FROM systems s
                 WHERE s.name = ?
             ''', (ref_x, ref_x, ref_y, ref_y, ref_z, ref_z, entry['system']))
-            
+
             system = cursor.fetchone()
             if not system:
                 continue
-                
+
             # Get station data
             stations = res_data.get_station_commodities(conn, system['id64'])
-            
+
             results.append({
                 'system': entry['system'],
                 'power': system['controlling_power'] or 'None',
@@ -1055,7 +1058,7 @@ def search_high_yield_platinum():
                 'comment': entry['comment'],
                 'stations': stations
             })
-        
+
         conn.close()
         return jsonify(results)
     except Exception as e:
@@ -1063,4 +1066,4 @@ def search_high_yield_platinum():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000) 
+    app.run(debug=True, port=5000)
