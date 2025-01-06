@@ -86,7 +86,11 @@ def calculate_distance(x: float, y: float, z: float, origin_x: float = 0, origin
 
 def create_database(db_path: str):
     """Create the SQLite database schema."""
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode = OFF")
+    conn.execute("PRAGMA TEMP_STORE = 2")
+    conn.execute("PRAGMA synchronous = OFF")
+
     c = conn.cursor()
 
     # Main systems table with frequently searched fields
