@@ -32,6 +32,12 @@ try:
 except ImportError:
     LZ4_AVAILABLE = False
 
+try:
+    import brotli
+    BROTLI_AVAILABLE = True
+except ImportError:
+    BROTLI_AVAILABLE = False
+
 # Get the absolute path of the directory containing server.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -136,7 +142,7 @@ system_database = systems.db"""
 
 def decompress_data(data: str) -> str:
     """Decompress data if it was compressed during conversion."""
-    if not data.startswith('__compressed__'):
+    if not data.startswith('__'):
         return data
 
     try:
@@ -144,17 +150,21 @@ def decompress_data(data: str) -> str:
         _, method, compressed_hex = data.split('__', 2)
         compressed = bytes.fromhex(compressed_hex)
 
-        if method == 'zlib':
+        if method == 'c1':
             decompressed = zlib.decompress(compressed)
-        elif method == 'zstandard':
+        elif method == 'c2':
             if not ZSTD_AVAILABLE:
                 raise ImportError("zstandard package not installed. Install with: pip install zstandard")
             dctx = zstandard.ZstdDecompressor()
             decompressed = dctx.decompress(compressed)
-        elif method == 'lz4':
+        elif method == 'c3':
             if not LZ4_AVAILABLE:
                 raise ImportError("lz4 package not installed. Install with: pip install lz4")
             decompressed = lz4.frame.decompress(compressed)
+        elif method == 'c4':
+            if not BROTLI_AVAILABLE:
+                raise ImportError("brotli package not installed. Install with: pip install brotlipy")
+            decompressed = brotli.decompress(compressed)
         else:
             raise ValueError(f"Unknown compression method: {method}")
 

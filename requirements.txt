@@ -3,3 +3,4 @@ ijson
 lz4
 tqdm
 zstandard
+brotlipy

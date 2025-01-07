@@ -25,6 +25,12 @@ try:
 except ImportError:
     LZ4_AVAILABLE = False
 
+try:
+    import brotli
+    BROTLI_AVAILABLE = True
+except ImportError:
+    BROTLI_AVAILABLE = False
+
 def compress_data(data: str, method: str) -> str:
     """Compress string data using the specified method."""
     if method == 'none':
@@ -36,18 +42,23 @@ def compress_data(data: str, method: str) -> str:
     # Add compression method prefix to compressed data
     if method == 'zlib':
         compressed = zlib.compress(data_bytes)
-        return f"__compressed__zlib__{compressed.hex()}"
+        return f"__c1__{compressed.hex()}"
     elif method == 'zstandard':
         if not ZSTD_AVAILABLE:
             raise ImportError("zstandard package not installed. Install with: pip install zstandard")
         cctx = zstandard.ZstdCompressor()
         compressed = cctx.compress(data_bytes)
-        return f"__compressed__zstandard__{compressed.hex()}"
+        return f"__c2__{compressed.hex()}"
     elif method == 'lz4':
         if not LZ4_AVAILABLE:
             raise ImportError("lz4 package not installed. Install with: pip install lz4")
         compressed = lz4.frame.compress(data_bytes)
-        return f"__compressed__lz4__{compressed.hex()}"
+        return f"__c3__{compressed.hex()}"
+    elif method == 'brotli':
+        if not BROTLI_AVAILABLE:
+            raise ImportError("brotli package not installed. Install with: pip install brotlipy")
+        compressed = brotli.compress(data_bytes)
+        return f"__c4__{compressed.hex()}"
     else:
         raise ValueError(f"Unknown compression method: {method}")
 
@@ -458,7 +469,7 @@ if __name__ == '__main__':
     parser.add_argument('--exclude-carriers', action='store_true',
                       help='Exclude Drake-Class Carriers from the database')
     parser.add_argument('-c', '--compression',
-                      choices=['none', 'zlib', 'zstandard', 'lz4'],
+                      choices=['none', 'zlib', 'zstandard', 'lz4', 'brotli'],
                       default='none',
                       help='Compression method for JSON data (default: none)')
     parser.add_argument('--trim-entries', action='store_true',
