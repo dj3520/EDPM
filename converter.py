@@ -1,6 +1,5 @@
 import sqlite3
 import json
-import ijson  # For streaming JSON parsing
 from pathlib import Path
 import sys
 import argparse
