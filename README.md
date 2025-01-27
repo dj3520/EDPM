@@ -41,6 +41,7 @@ pip install -r requirements.txt
    
    - Get `galaxy_stations.json.gz` from [Spansh Dumps](https://spansh.co.uk/dumps)
    - Place the **extracted json file** in the `json` directory
+   - Alternatively just toss the URL into the tool. The file won't be saved, so if anything messes up, the download will happen again.
 
 2. Convert the data:
    
@@ -51,7 +52,7 @@ pip install -r requirements.txt
    Wait for the conversion to complete. This will create your systems database.
 
 3. Configure settings:
-   Edit `Config.ini` with your preferences:
+   Edit `Config.ini` with your preferences or start the server for defaults:
    
    ```ini
    [Defaults]
@@ -113,7 +114,7 @@ Disclaimer: I probably won't have the time to read them everyday and provide reg
 
 ## Acknowledgments
 
-This project was created with the assistance of Claude, an AI assistant by Anthropic: [claude.ai](https://claude.ai/) and [cursor.com](https://www.cursor.com). Claude helped in designing, implementing, and documenting the entire codebase, making this tool possible.
+The original project was created with the assistance of Claude, an AI assistant by Anthropic: [claude.ai](https://claude.ai/) and [cursor.com](https://www.cursor.com). Claude helped in designing, implementing, and documenting the entire codebase, making this tool possible. However in my fork there is no use of AI in any capacity to further development from the point of this fork's creation.
 
 --- 
 
