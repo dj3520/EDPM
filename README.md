@@ -1,5 +1,13 @@
 # Elite Dangerous Merit Miner
 
+Note: Current differences in this fork:
+- Does not require decompressing the spansh dump for import.
+- Does not require downloading the spansh dump at all, though you may still wish to.
+- Using a `--max-distance` of 0 means there is no limit.
+- `converter.py` speed improvements
+- Database speed improvements
+- Brotli database compression support via `brotlipy`
+
 A specialized mining helper tool for Elite Dangerous that helps you find the most profitable mining locations within your power's territory. It displays optimal mining locations where you can both mine materials and sell them at high prices, showing station demands, planetary ring conditions and hotspot details. 
 
 Adds special search option for res hotspots and high yield platinum hotspots (based on community effort from: https://edtools.cc/) . Lists of hotspots and res sites are probably not complete and will not be updated regularly.
@@ -48,10 +56,11 @@ pip install -r requirements.txt
    ```bash
    python converter.py json/galaxy_stations.json systems.db --max-distance 500 --exclude-carriers --trim-entries --compression zstandard 
    ```
+   Compression methods availible are none and zlib, and if installed, zstandard, lz4, and brotli.
    
    Wait for the conversion to complete. This will create your systems database.
 
-3. Configure settings:
+4. Configure settings:
    Edit `Config.ini` with your preferences or start the server for defaults:
    
    ```ini
