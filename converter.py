@@ -11,6 +11,7 @@ import time
 from decimal import Decimal
 import zlib  # Built-in compression
 import gzip
+from urllib.request import urlopen
 
 # Optional compression libraries
 try:
@@ -218,16 +219,29 @@ def extract_station_commodities(station: Dict) -> list:
 
 def process_json_stream(import_file: str) -> Generator[Dict[Any, Any], None, None]:
     """Stream the JSON file one system at a time to avoid memory issues."""
-    if ".gz" in import_file:
-        with gzip.open(import_file, 'rb') as file:
-            parser = ijson.items(file, 'item')
-            for system in parser:
-                yield system
-    else:
-        with open(import_file, 'rb') as file:
-            parser = ijson.items(file, 'item')
-            for system in parser:
-                yield system
+
+    switch = 1 if ".gz" in import_file else 0
+    if "https://" in import_file: switch += 2
+
+    if switch == 1: f = gzip.open(import_file, 'rb')
+    elif switch == 0: f = open(import_file, 'rb')
+    elif switch == 3: f = gzip.GzipFile(fileobj=urlopen(import_file))
+    else: open(urlopen(import_file))
+
+    with f as file:
+        #parser = ijson.items(file, 'item')
+        #for system in parser:
+        for p in f:
+            if not isinstance(p, str):
+                p = str(p, 'utf-8')
+            for r in ("  ", "\t", "\n"):
+                p = p.replace(r, "")
+            while p[-1:] in [",", "]"]: p = p[:-1]  # Delete last character if "," or "]" We're decoding a massive list after all.
+            if p == "[": continue
+            if p == "": continue
+            p = json.loads(p)
+            yield p
+
 
 def convert_json_to_sqlite(import_file: str, db_file: str, max_distance: float, exclude_carriers: bool = False, compression: str = 'none', trim_entries: bool = False):
     """Convert the large JSON file to SQLite database."""
@@ -255,6 +269,7 @@ def convert_json_to_sqlite(import_file: str, db_file: str, max_distance: float, 
         stats_bar = tqdm(bar_format='{desc}', desc='', position=1, leave=True)
 
         for system in process_json_stream(import_file):
+
             # Calculate distance from Sol
             coords = system.get('coords', {})
             x = float(coords.get('x', 0))
@@ -477,9 +492,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    if not Path(args.import_file).exists():
-        print(f"Input file {args.import_file} does not exist!")
-        sys.exit(1)
+    #if not Path(args.import_file).exists():
+    #    print(f"Input file {args.import_file} does not exist!")
+    #    sys.exit(1)
 
     try:
         max_distance = float(args.max_distance)
